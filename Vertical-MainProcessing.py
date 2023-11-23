@@ -2,6 +2,8 @@
 # if not self.express_data:
 # to
 # if not self.express_data or type(self.express_data) == bool:
+
+# stepper center to laser center is 28.5mm
 from rplidar import RPLidar
 import numpy as np
 import pyqtgraph as pg
@@ -83,7 +85,7 @@ class LidarPlotter:
         self.lidarThread.newData.connect(self.update)
         self.lidarThread.start()
 
-        self.current_z = 0
+        self.current_x = 0
         self.all_points = np.empty((0, 3))
         self.new_scan_data = None
         self.constant_mode = True
@@ -93,14 +95,13 @@ class LidarPlotter:
             if self.new_scan_data is not None:
                 self.take_snapshot(self.new_scan_data, accumulate=True)
                 self.display_snapshot()
-                self.current_z += 5
+                self.current_x += 5
 
     def take_snapshot(self, scan, accumulate=True):
         angles = np.deg2rad(np.array([item[1] for item in scan]))
         distances = np.array([item[2] for item in scan])
 
-        # Assuming x is the constant axis for the vertical slice
-        x = np.full(len(scan), self.current_z)  # or any other constant value
+        x = np.full(len(scan), self.current_x)
         y = distances * np.cos(angles)
         z = distances * np.sin(angles)
 
@@ -126,7 +127,7 @@ class LidarPlotter:
 
     def reset_display(self):
         self.all_points = np.empty((0, 3))
-        self.current_z = 0
+        self.current_x = 0
         self.display_snapshot()
 
     def toggle_mode(self):
