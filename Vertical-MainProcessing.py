@@ -98,9 +98,11 @@ class LidarPlotter:
     def take_snapshot(self, scan, accumulate=True):
         angles = np.deg2rad(np.array([item[1] for item in scan]))
         distances = np.array([item[2] for item in scan])
-        x = distances * np.cos(angles)
-        y = distances * np.sin(angles)
-        z = np.full(len(scan), self.current_z)
+
+        # Assuming x is the constant axis for the vertical slice
+        x = np.full(len(scan), self.current_z)  # or any other constant value
+        y = distances * np.cos(angles)
+        z = distances * np.sin(angles)
 
         new_points = np.vstack([x, y, z]).T
 
@@ -108,6 +110,7 @@ class LidarPlotter:
             self.all_points = np.vstack([self.all_points, new_points])
         else:
             self.all_points = new_points
+
 
     def display_snapshot(self):
         self.scatter.setData(
