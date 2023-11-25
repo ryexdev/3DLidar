@@ -1,19 +1,32 @@
-# rplidar.py
-# if not self.express_data:
-# to
-# if not self.express_data or type(self.express_data) == bool:
-
-# stepper center to laser center is 28.5mm
-from rplidar import RPLidar
-import numpy as np
-import pyqtgraph as pg
-from pyqtgraph.opengl import GLViewWidget, GLScatterPlotItem
-from PyQt5 import QtWidgets, QtCore
+import serial
 import sys
 import time
+import numpy as np
+from PyQt5 import QtWidgets, QtCore
 from PyQt5.QtCore import Qt
+from pyqtgraph.opengl import GLViewWidget, GLScatterPlotItem
+from rplidar import RPLidar
 
 PORT_NAME = 'COM4'
+
+class SerialThread(QtCore.QThread):
+    newAngle = QtCore.pyqtSignal(float)
+
+    def __init__(self, port, baud_rate):
+        super().__init__()
+        self.serial = serial.Serial(port, baud_rate, timeout=1)
+        self.running = True
+
+    def run(self):
+        time.sleep(2)
+        while self.running:
+            if self.serial.in_waiting > 0:
+                line = self.serial.readline().decode('utf-8').rstrip()
+                try:
+                    angle = float(line)
+                    self.newAngle.emit(angle)
+                except ValueError:
+                    pass
 
 class LidarThread(QtCore.QThread):
     newData = QtCore.pyqtSignal(object)
@@ -45,7 +58,6 @@ class LidarThread(QtCore.QThread):
             self.lidar.stop()
             self.lidar.stop_motor()
             self.lidar.disconnect()
-
 
 class CustomGLViewWidget(GLViewWidget):
     keyPressed = QtCore.pyqtSignal(QtCore.QEvent)
@@ -85,49 +97,44 @@ class LidarPlotter:
         self.lidarThread.newData.connect(self.update)
         self.lidarThread.start()
 
+        self.serialThread = SerialThread("COM5", 115200)
+        self.serialThread.newAngle.connect(self.update_current_x)
+        self.serialThread.start()
+
         self.current_x = 0
-        self.all_points = np.empty((0, 3))
+        self.all_points = {}
         self.new_scan_data = None
         self.constant_mode = True
 
     def handle_key_press(self, event):
         if event.key() == Qt.Key_Enter or event.key() == Qt.Key_Return:
             if self.new_scan_data is not None:
-                self.take_snapshot(self.new_scan_data, accumulate=True)
+                self.take_snapshot(self.new_scan_data, self.current_x)
                 self.display_snapshot()
-                self.current_x += 5
 
-    def take_snapshot(self, scan, accumulate=True):
+    def take_snapshot(self, scan, x_position):
         angles = np.deg2rad(np.array([item[1] for item in scan]))
         distances = np.array([item[2] for item in scan])
-
-        x = np.full(len(scan), self.current_x)
         y = distances * np.cos(angles)
         z = distances * np.sin(angles)
-
-        new_points = np.vstack([x, y, z]).T
-
-        if accumulate:
-            self.all_points = np.vstack([self.all_points, new_points])
-        else:
-            self.all_points = new_points
-
+        new_points = np.vstack([np.full(len(scan), x_position), y, z]).T
+        self.all_points[x_position] = new_points
 
     def display_snapshot(self):
+        combined_points = np.vstack(list(self.all_points.values()))
         self.scatter.setData(
-            pos=self.all_points,
+            pos=combined_points,
             size=5
         )
 
     def update(self, scan):
         self.new_scan_data = scan
         if self.constant_mode:
-            self.take_snapshot(scan, accumulate=False)
+            self.take_snapshot(scan, self.current_x)
             self.display_snapshot()
 
     def reset_display(self):
-        self.all_points = np.empty((0, 3))
-        self.current_x = 0
+        self.all_points = {}
         self.display_snapshot()
 
     def toggle_mode(self):
@@ -136,9 +143,14 @@ class LidarPlotter:
         if self.constant_mode and self.new_scan_data is not None:
             self.display_snapshot()
 
+    def update_current_x(self, angle):
+        self.current_x = angle
+        if self.new_scan_data is not None and self.constant_mode:
+            self.take_snapshot(self.new_scan_data, self.current_x)
+            self.display_snapshot()
+
     def run(self):
         sys.exit(self.app.exec_())
-
 
 def main():
     plotter = LidarPlotter()
@@ -146,6 +158,7 @@ def main():
         plotter.run()
     except KeyboardInterrupt:
         plotter.lidarThread.running = False
+        plotter.serialThread.running = False
 
 if __name__ == '__main__':
     main()
