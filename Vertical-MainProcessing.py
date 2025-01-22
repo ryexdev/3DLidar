@@ -113,12 +113,21 @@ class LidarPlotter:
                 self.display_snapshot()
 
     def take_snapshot(self, scan, x_position):
-        angles = np.deg2rad(np.array([item[1] for item in scan]))
-        distances = np.array([item[2] for item in scan])
-        y = distances * np.cos(angles)
-        z = distances * np.sin(angles)
-        new_points = np.vstack([np.full(len(scan), x_position), y, z]).T
+        angles = np.deg2rad(np.array([item[1] for item in scan]))  # LiDAR scan angles
+        distances = np.array([item[2] for item in scan])  # LiDAR scan distances
+
+        # Convert servo angle (0-180 degrees) to radians for 3D calculations
+        servo_angle_rad = np.deg2rad(x_position)
+
+        # Calculate the x and z coordinates based on the vertical rotation
+        # Assuming the rotation is around the y-axis
+        x = distances * np.cos(angles) * np.sin(servo_angle_rad)
+        y = distances * np.sin(angles)
+        z = distances * np.cos(angles) * np.cos(servo_angle_rad)
+
+        new_points = np.vstack([x, y, z]).T
         self.all_points[x_position] = new_points
+
 
     def display_snapshot(self):
         combined_points = np.vstack(list(self.all_points.values()))
